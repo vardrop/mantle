@@ -9,10 +9,10 @@ RUN go mod tidy
 RUN go get -v -u .
 RUN CGO_ENABLED=1 go install -ldflags '-extldflags "-static"'
 
-FROM scratch
+FROM alpine
 COPY --from=golang /go/bin/mantle /app
 
-EXPOSE 8080
-VOLUME /data
+EXPOSE 8000
+VOLUME /.config
 ENTRYPOINT ["/app"]
 CMD ["./mantle"]
