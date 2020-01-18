@@ -12,6 +12,7 @@ RUN CGO_ENABLED=1 go install -ldflags '-extldflags "-static"'
 FROM alpine
 COPY --from=golang /go/bin/mantle /app
 
+USER guest
 EXPOSE 8000
 VOLUME /.config
 ENTRYPOINT ["/app"]
