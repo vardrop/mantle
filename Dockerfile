@@ -15,5 +15,5 @@ COPY --from=golang /go/bin/mantle /app
 USER guest
 EXPOSE 8000
 VOLUME /.config
-ENTRYPOINT ["/app"]
-CMD ["./mantle"]
+ENTRYPOINT ["/"]
+CMD ["./app"]
