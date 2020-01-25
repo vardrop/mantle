@@ -16,5 +16,5 @@ FROM alpine
 COPY --from=golang /go/bin/mantle /app/mantle
 
 EXPOSE 8000
-VOLUME /.config/mantle
+VOLUME /root/.config/mantle
 CMD ["/app/mantle"]
