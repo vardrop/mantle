@@ -6,9 +6,10 @@ WORKDIR /go/src/mantle
 RUN go mod init github.com/nektro/mantle
 RUN go get -v -u github.com/rakyll/statik
 RUN $GOPATH/bin/statik -src="./www/"
-RUN go get -v -u .
+RUN go get -v -u -d .
 RUN go mod edit -replace=github.com/satori/go.uuid@v1.2.0=github.com/satori/go.uuid@master
 RUN go mod tidy
+RUN go get -v -u .
 RUN CGO_ENABLED=1 go install -ldflags '-extldflags "-static"'
 
 FROM alpine
