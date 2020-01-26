@@ -1,8 +1,7 @@
 FROM golang:alpine as golang
-RUN apk add --no-cache git libc-dev musl-dev build-base gcc git
-WORKDIR /go/src
-RUN git clone https://github.com/nektro/mantle
+RUN apk add --no-cache git libc-dev musl-dev build-base gcc ca-certificates
 WORKDIR /go/src/mantle
+COPY . .
 RUN go mod init github.com/nektro/mantle
 RUN go get -v -u github.com/rakyll/statik
 RUN $GOPATH/bin/statik -src="./www/"
@@ -13,6 +12,7 @@ RUN go get -v -u .
 RUN CGO_ENABLED=1 go install -ldflags '-extldflags "-static"'
 
 FROM alpine
+COPY --from=golang /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=golang /go/bin/mantle /app/mantle
 
 EXPOSE 8000
