@@ -1,0 +1,18 @@
+name: Sync
+on:
+  schedule:
+  - cron: "0 * * * *"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Fork Sync:Docker
+      uses: TG908/fork-sync@v1.1.4
+      with:
+        owner: nektro
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        head: master
+        base: master
+        merge_method: rebase
+        pr_title: Fork Sync
+        pr_message: Keeping fork up to date
