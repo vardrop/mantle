@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/nektro/mantle/pkg/idata"
 	"github.com/nektro/mantle/pkg/itypes"
 
 	"github.com/gorilla/sessions"
@@ -49,7 +50,7 @@ func assertChannelMessagesTableExists(uid string) {
 	})
 }
 
-func apiBootstrapRequireLogin(r *http.Request, w http.ResponseWriter, method string, assertMembership bool) (*sessions.Session, *itypes.RowUser, error) {
+func apiBootstrapRequireLogin(r *http.Request, w http.ResponseWriter, method string, assertMembership bool) (*sessions.Session, *itypes.User, error) {
 	if r.Method != method {
 		return nil, nil, writeAPIResponse(r, w, false, http.StatusMethodNotAllowed, "This action requires using HTTP "+method)
 	}
@@ -97,13 +98,13 @@ func createRole(name string) string {
 	return uid
 }
 
-func calculateUserPermissions(user *itypes.RowUser) *itypes.UserPerms {
+func calculateUserPermissions(user *itypes.User) *itypes.UserPerms {
 	perms := itypes.UserPerms{}
 	for _, item := range strings.Split(user.Roles, ",") {
 		if item == "" {
 			continue
 		}
-		role := roleCache[item]
+		role := idata.RoleCache[item]
 
 		switch itypes.Perm(role.PermManageChannels) {
 		case PermDeny, PermAllow:
@@ -118,7 +119,7 @@ func calculateUserPermissions(user *itypes.RowUser) *itypes.UserPerms {
 }
 
 func broadcastMessage(message map[string]string) {
-	for _, item := range wsConnCache {
+	for _, item := range idata.WsConnCache {
 		item.Conn.WriteJSON(message)
 	}
 }
@@ -147,13 +148,4 @@ func listToArray(l *list.List) []string {
 		res = append(res, e.Value.(string))
 	}
 	return res
-}
-
-func firstNonZero(x ...int) int {
-	for _, item := range x {
-		if item != 0 {
-			return item
-		}
-	}
-	return 0
 }

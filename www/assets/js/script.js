@@ -99,6 +99,11 @@ let me = null;
     socket.addEventListener("message", async function(e) {
         const d = JSON.parse(e.data);
         switch (d.type) {
+            case "pong": {
+                // do nothing, keep connection alive
+                console.debug("pong")
+                break;
+            }
             case "message": {
                 const u = await getUserFromUUID(d.from);
                 ui.addMessage(d.in, u, d.message);
@@ -122,10 +127,21 @@ let me = null;
             }
         }
     });
+    setInterval(function() {
+        if (el_2.classList.contains("online")) {
+            socket.send(JSON.stringify({
+                type: "ping",
+            }))
+        }
+    }, 30*1000)
 
     input.addEventListener("keydown", function(e) {
         if (e.key === "Enter") {
-            socket.send(ui.volatile.activeChannel.dataset.uuid + this.value);
+            socket.send(JSON.stringify({
+                type: "message",
+                in: ui.volatile.activeChannel.dataset.uuid,
+                message: this.value,
+            }));
             this.value = "";
         }
     });

@@ -1,62 +1,43 @@
 package main
 
 import (
-	"container/list"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 
+	"github.com/nektro/mantle/pkg/idata"
 	"github.com/nektro/mantle/pkg/itypes"
 
-	"github.com/gorilla/websocket"
 	"github.com/nektro/go-util/util"
 	etc "github.com/nektro/go.etc"
-	oauth2 "github.com/nektro/go.oauth2"
 	"github.com/spf13/pflag"
+	"github.com/valyala/fastjson"
 
 	. "github.com/nektro/go-util/alias"
 
 	_ "github.com/nektro/mantle/statik"
 )
 
-var (
-	config      *Config
-	wsUpgrader  = websocket.Upgrader{ReadBufferSize: 1024, WriteBufferSize: 1024}
-	wsConnCache = map[string]itypes.ConnCacheValue{}
-	roleCache   = map[string]itypes.RowRole{}
-	connected   = list.New()
-)
-
-type Config struct {
-	Version   int               `json:"version"`
-	Port      int               `json:"port"`
-	Clients   []oauth2.AppConf  `json:"clients"`
-	Providers []oauth2.Provider `json:"providers"`
-}
 
 func main() {
 	util.Log("Welcome to " + Name + ".")
 
 	//
-	flagPort := pflag.Int("port", 0, "The port to bind the web server to.")
+	pflag.IntVar(&idata.Config.Port, "port", 8000, "The port to bind the web server to.")
 	etc.PreInit()
 
 	//
-	etc.Init("mantle", &config, "./invite", helperSaveCallbackInfo)
-
-	//
-	config.Port = firstNonZero(*flagPort, config.Port, 8080)
+	etc.Init("mantle", &idata.Config, "./invite", helperSaveCallbackInfo)
 
 	//
 	// database initialization
 
-	etc.Database.CreateTableStruct(cTableSettings, itypes.RowSetting{})
-	etc.Database.CreateTableStruct(cTableUsers, itypes.RowUser{})
-	etc.Database.CreateTableStruct(cTableChannels, itypes.RowChannel{})
-	etc.Database.CreateTableStruct(cTableRoles, itypes.RowRole{})
-	etc.Database.CreateTableStruct(cTableChannelRolePerms, itypes.RowChannelRolePerms{})
+	etc.Database.CreateTableStruct(cTableSettings, itypes.Setting{})
+	etc.Database.CreateTableStruct(cTableUsers, itypes.User{})
+	etc.Database.CreateTableStruct(cTableChannels, itypes.Channel{})
+	etc.Database.CreateTableStruct(cTableRoles, itypes.Role{})
+	etc.Database.CreateTableStruct(cTableChannelRolePerms, itypes.ChannelRolePerms{})
 
 	// for loop create channel message tables
 	_chans := queryAllChannels()
@@ -84,7 +65,7 @@ func main() {
 	//		uneditable, and has all perms always
 
 	pa := uint8(PermAllow)
-	roleCache["o"] = itypes.RowRole{
+	idata.RoleCache["o"] = itypes.Role{
 		0, "o", 0, "Owner", "", pa, pa,
 	}
 
@@ -92,7 +73,7 @@ func main() {
 	// load roles into local cache
 
 	for _, item := range queryAllRoles() {
-		roleCache[item.UUID] = item
+		idata.RoleCache[item.UUID] = item
 	}
 
 	//
@@ -105,7 +86,7 @@ func main() {
 		etc.Database.Close()
 
 		util.Log("Closing all remaining active WebSocket connections")
-		for _, item := range wsConnCache {
+		for _, item := range idata.WsConnCache {
 			item.Conn.Close()
 		}
 
@@ -160,7 +141,7 @@ func main() {
 		if err != nil {
 			return
 		}
-		writeAPIResponse(r, w, true, http.StatusOK, listToArray(connected))
+		writeAPIResponse(r, w, true, http.StatusOK, listToArray(idata.Connected))
 	})
 
 	http.HandleFunc("/api/channels/@me", func(w http.ResponseWriter, r *http.Request) {
@@ -178,7 +159,7 @@ func main() {
 			fmt.Fprintln(w, "missing post value")
 			return
 		}
-		cv, ok := wsConnCache[user.UUID]
+		cv, ok := idata.WsConnCache[user.UUID]
 		if !ok {
 			fmt.Fprintln(w, "unable to find user in ws connection cache")
 			return
@@ -204,13 +185,13 @@ func main() {
 		if err != nil {
 			return
 		}
-		conn, _ := wsUpgrader.Upgrade(w, r, nil)
+		conn, _ := idata.WsUpgrader.Upgrade(w, r, nil)
 		perms := calculateUserPermissions(user)
-		wsConnCache[user.UUID] = itypes.ConnCacheValue{conn, user, perms}
+		idata.WsConnCache[user.UUID] = itypes.ConnCacheValue{conn, user, perms}
 
 		// connect
-		if !listHas(connected, user.UUID) {
-			connected.PushBack(user.UUID)
+		if !listHas(idata.Connected, user.UUID) {
+			idata.Connected.PushBack(user.UUID)
 			broadcastMessage(map[string]string{
 				"type": "user-connect",
 				"user": user.UUID,
@@ -225,18 +206,29 @@ func main() {
 			}
 
 			// broadcast message to all connected clients
-			smsg := string(msg)
-			broadcastMessage(map[string]string{
-				"type":    "message",
-				"in":      smsg[:32],
-				"from":    user.UUID,
-				"message": smsg[32:],
-			})
+			smg, err := fastjson.ParseBytes(msg)
+			if err != nil {
+				continue
+			}
+			switch string(smg.GetStringBytes("type")) {
+			case "ping":
+				// do nothing, keep connection alive
+				conn.WriteJSON(map[string]string{
+					"type": "pong",
+				})
+			case "message":
+				broadcastMessage(map[string]string{
+					"type":    "message",
+					"in":      string(smg.GetStringBytes("in")),
+					"from":    user.UUID,
+					"message": string(smg.GetStringBytes("message")),
+				})
+			}
 		}
 		// disconnect
-		if listHas(connected, user.UUID) {
-			delete(wsConnCache, user.UUID)
-			listRemove(connected, user.UUID)
+		if listHas(idata.Connected, user.UUID) {
+			delete(idata.WsConnCache, user.UUID)
+			listRemove(idata.Connected, user.UUID)
 			broadcastMessage(map[string]string{
 				"type": "user-disconnect",
 				"user": user.UUID,
@@ -247,15 +239,5 @@ func main() {
 	//
 	// start server
 
-	if !util.IsPortAvailable(config.Port) {
-		util.DieOnError(
-			E(F("Binding to port %d failed.", config.Port)),
-			"It may be taken or you may not have permission to. Aborting!",
-		)
-		return
-	}
-
-	p := strconv.Itoa(config.Port)
-	util.Log("Initialization complete. Starting server on port " + p)
-	http.ListenAndServe(":"+p, nil)
+	etc.StartServer(idata.Config.Port)
 }
