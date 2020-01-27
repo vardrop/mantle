@@ -15,6 +15,8 @@ FROM alpine
 COPY --from=golang /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=golang /go/bin/mantle /app/mantle
 
-EXPOSE 8000
 VOLUME /root/.config/mantle
-CMD ["/app/mantle"]
+CMD /app/mantle \
+  --port ${PORT:-8000} \
+  --auth-${AUTH:-discord}-id $(cat /run/secrets/MANTLE_AUTH_CLIENT_ID) \
+  --auth-${AUTH:-discord}-secret $(cat /run/secrets/MANTLE_AUTH_CLIENT_SECRET)
